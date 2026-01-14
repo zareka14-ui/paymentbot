@@ -2,7 +2,6 @@ import asyncio
 import logging
 import os
 import sys
-import re
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -14,14 +13,12 @@ from aiohttp import web
 TOKEN = os.getenv("BOT_TOKEN") 
 ADMIN_ID = os.getenv("ADMIN_ID") 
 PORT = int(os.getenv("PORT", 8080))
-
 OFFER_LINK = "https://disk.yandex.ru/i/b3lgPjPheWM14w"
 
 class Registration(StatesGroup):
     waiting_for_name = State()
     waiting_for_contact = State()
-    waiting_for_allergies = State()
-    confirm_data = State() # Новый этап проверки
+    confirm_data = State()
     waiting_for_payment_proof = State()
 
 bot = Bot(token=TOKEN)
@@ -36,9 +33,8 @@ def get_start_kb():
     )
 
 def get_progress(step):
-    """Визуальный индикатор прогресса"""
-    steps = ["⬜", "⬜", "⬜", "⬜"]
-    for i in range(step):
+    steps = ["⬜", "⬜", "⬜"]
+    for i in range(min(step, 3)):
         steps[i] = "✅"
     return "".join(steps)
 
@@ -50,9 +46,9 @@ async def cmd_start(message: types.Message, state: FSMContext):
     welcome_text = (
         "✨ **Трансформационная игра «СИЛА РОДА»**\n"
         "━━━━━━━━━━━━━━━━━━\n"
-        "Добро пожаловать в сакральное пространство. Чтобы записаться на игру "
-        " нам нужно познакомиться поближе.\n\n"
-        "Нажмите кнопку ниже, чтобы начать регистрацию"
+        "Добро пожаловать. Чтобы записаться на игру, "
+        "заполните короткую анкету.\n\n"
+        "Нажмите кнопку ниже, чтобы начать"
     )
     await message.answer(welcome_text, parse_mode="Markdown", reply_markup=get_start_kb())
 
@@ -68,24 +64,22 @@ async def start_form(message: types.Message, state: FSMContext):
 async def process_name(message: types.Message, state: FSMContext):
     await state.update_data(name=message.text)
     await message.answer(
-        f"{get_progress(1)}\n**Шаг 2:** Напишите ваш **номер телефона**:\n"
-        , parse_mode="Markdown"
+        f"{get_progress(1)}\n**Шаг 2:** Напишите ваш **номер телефона** или @username:",
+        parse_mode="Markdown"
     )
     await state.set_state(Registration.waiting_for_contact)
 
 @dp.message(Registration.waiting_for_contact, F.text)
 async def process_contact(message: types.Message, state: FSMContext):
-    phone_digits = re.sub(r'\D', '', message.text)
-    if 10 <= len(phone_digits) <= 15 or message.text.startswith('@'):
-        await state.update_data(contact=message.text)
-       
+    await state.update_data(contact=message.text)
+    data = await state.get_data()
     
-    # ЭТАП ПОДТВЕРЖДЕНИЯ (КРАСОТА И УДОБСТВО)
+    # Сразу переходим к проверке (аллергии удалены)
     summary = (
-        f"{get_progress(3)}\n**ПРОВЕРЬТЕ ВАШИ ДАННЫЕ:**\n"
+        f"{get_progress(2)}\n**ПРОВЕРЬТЕ ВАШИ ДАННЫЕ:**\n"
         "━━━━━━━━━━━━━━━━━━\n"
-        f"👤 **ФИО:** {data['name']}\n"
-        f"📞 **Связь:** {data['contact']}\n"
+        f"👤 **ФИО:** {data.get('name')}\n"
+        f"📞 **Связь:** {data.get('contact')}\n"
         "━━━━━━━━━━━━━━━━━━\n"
         "Если всё верно — подтвердите оферту."
     )
@@ -100,7 +94,8 @@ async def process_contact(message: types.Message, state: FSMContext):
 
 @dp.callback_query(F.data == "restart")
 async def restart_form(callback: types.CallbackQuery, state: FSMContext):
-    await callback.answer("Сброс данных...")
+    await callback.answer()
+    # Возвращаемся в начало через вызов хендлера начала регистрации
     await start_form(callback.message, state)
 
 @dp.callback_query(F.data == "confirm_ok", Registration.confirm_data)
@@ -109,7 +104,7 @@ async def process_confirm(callback: types.CallbackQuery, state: FSMContext):
     pay_text = (
         "✅ **ДАННЫЕ ПРИНЯТЫ**\n\n"
         "Для бронирования места переведите депозит **5000 руб.**\n\n"
-        "📌 **Реквизиты (нажмите, чтобы скопировать):**\n"
+        "📌 **Реквизиты:**\n"
         "`+79124591439` (Сбер / Т-Банк)\n"
         "👤 Получатель: Екатерина Б.\n\n"
         "📎 **После оплаты пришлите скриншот чека сюда.**"
@@ -121,11 +116,10 @@ async def process_confirm(callback: types.CallbackQuery, state: FSMContext):
 async def process_payment_proof(message: types.Message, state: FSMContext):
     user_data = await state.get_data()
     admin_report = (
-        "🔥 **НОВАЯ ЗАЯВКА НА ИГРУ!!!**\n"
+        "🔥 <b>НОВАЯ ЗАЯВКА НА ИГРУ!!!</b>\n"
         "━━━━━━━━━━━━━━━━━━\n"
-        f"👤 **ФИО:** {user_data.get('name')}\n"
-        f"📞 **Связь:** {user_data.get('contact')}\n"
-        f"⚠️ **Аллергии:** {user_data.get('allergies')}\n"
+        f"👤 <b>ФИО:</b> {user_data.get('name')}\n"
+        f"📞 <b>Связь:</b> {user_data.get('contact')}\n"
         f"🆔 ID: <code>{message.from_user.id}</code>\n"
         f"🔗 Профиль: {message.from_user.mention_html()}\n"
         "━━━━━━━━━━━━━━━━━━"
@@ -139,8 +133,7 @@ async def process_payment_proof(message: types.Message, state: FSMContext):
             logging.error(f"Ошибка админа: {e}")
     
     await message.answer(
-        "✨ **БЛАГОДАРИМ!**\n\nВаша бронь принята. Мы свяжемся с вами в ближайшее время для подтверждения. "
-        "До встречи на игре!", 
+        "✨ **БЛАГОДАРИМ!**\n\nВаша бронь принята. Мы свяжемся с вами в ближайшее время.", 
         reply_markup=get_start_kb(), parse_mode="Markdown"
     )
     await state.clear()
@@ -157,10 +150,9 @@ async def start_web_server():
     site = web.TCPSite(runner, '0.0.0.0', PORT)
     await site.start()
 
-# --- ЗАПУСК ---
 async def main():
     await bot.delete_webhook(drop_pending_updates=True)
-    await bot.set_my_commands([types.BotCommand(command="start", description="Запустить регистрацию")])
+    await bot.set_my_commands([types.BotCommand(command="start", description="Начать")])
     await asyncio.gather(dp.start_polling(bot), start_web_server())
 
 if __name__ == "__main__":
