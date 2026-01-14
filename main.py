@@ -121,7 +121,7 @@ async def process_confirm(callback: types.CallbackQuery, state: FSMContext):
 async def process_payment_proof(message: types.Message, state: FSMContext):
     user_data = await state.get_data()
     admin_report = (
-        "🔥 **НОВАЯ ЗАЯВКА НА МИСТЕРИЮ**\n"
+        "🔥 **НОВАЯ ЗАЯВКА НА ИГРУ!!!**\n"
         "━━━━━━━━━━━━━━━━━━\n"
         f"👤 **ФИО:** {user_data.get('name')}\n"
         f"📞 **Связь:** {user_data.get('contact')}\n"
@@ -140,7 +140,7 @@ async def process_payment_proof(message: types.Message, state: FSMContext):
     
     await message.answer(
         "✨ **БЛАГОДАРИМ!**\n\nВаша бронь принята. Мы свяжемся с вами в ближайшее время для подтверждения. "
-        "До встречи на мистерии!", 
+        "До встречи на игре!", 
         reply_markup=get_start_kb(), parse_mode="Markdown"
     )
     await state.clear()
